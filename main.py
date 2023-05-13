@@ -1,5 +1,6 @@
 from pygame import *
 from pygame import mixer
+import time as t
 import math
 import threading
 import random
@@ -8,7 +9,7 @@ init()
 screen = display.set_mode()
 
 WINDOW_WIDTH, WINDOW_HEIGHT = screen.get_size()
-FPS = 60
+FRAMES = 60
 
 score = 0
 time_between_spawns = 2
@@ -16,8 +17,8 @@ can_take_damage_now = True
 
 ascent, descent = True, False
 game_running, window_running = True, True
-zombie_array, other_array, another_other_array, bullet_array = [], [], [], []
-holdw, holds, holdd, holda, holdclick = False, False, False, False, False
+zombie_array, bullet_array = [], []
+holding_w, holding_s, holding_d, holding_a, holding_click = False, False, False, False, False
 
 display.set_caption("zombie survival")
 icon = image.load("images/red.png")
@@ -37,12 +38,10 @@ damage_sound = mixer.Sound("sounds/damage.mp3")
 
 class Bullet():
 
-    def __init__(self, x, y, start_x, start_y, unit_x, unit_y):
+    def __init__(self, x, y, unit_x, unit_y):
 
         self.x = x
         self.y = y
-        self.start_x = start_x
-        self.start_y = start_y
         self.unit_x = unit_x
         self.unit_y = unit_y
         self.color = "yellow"
@@ -58,18 +57,19 @@ class Player:
         self.radius = 25
         self.speed = 5
         self.color = (0, 200, 0)
-        self.follow_x = 0
-        self.follow_y = 0
+        self.x_to_follow = WINDOW_WIDTH/2
+        self.y_to_follow = WINDOW_HEIGHT/2
 
 class Zombie:
 
-    def __init__(self, x, y, radius, color, speed, health, damage, difficulty):
+    def __init__(self, x, y, radius, color, perma_color, speed, health, damage, difficulty):
 
         self.x = x
         self.y = y
         self.radius = radius
         self.speed = speed
         self.color = color
+        self.perma_color = perma_color
         self.health = health
         self.damage = damage
         self.animating = False
@@ -78,29 +78,27 @@ class Zombie:
 player = Player()
 
 def draw_player():
-
     draw.circle(screen, player.color, (player.x, player.y), player.radius)
 
 def draw_map():
-
     for x in range(WINDOW_WIDTH+1):
         if x % 512 == 0:
-
             for y in range(WINDOW_HEIGHT+1):
                 if y % 512 == 0:
-
                     screen.blit(floor_image, (x, y))
 
-def player_movement_and_boundaries():
+def handle_player_movement():
 
-    if holda and not holdd:
+    if holding_a and not holding_d:
         player.x -= player.speed
-    if holdd and not holda:
+    if holding_d and not holding_a:
         player.x += player.speed
-    if holdw and not holds:
+    if holding_w and not holding_s:
         player.y -= player.speed
-    if holds and not holdw:
+    if holding_s and not holding_w:
         player.y += player.speed
+
+def prevent_boundary_escape():
 
     if player.x > WINDOW_WIDTH - player.radius:
         player.x = WINDOW_WIDTH - player.radius
@@ -111,173 +109,126 @@ def player_movement_and_boundaries():
     if player.y < 0 + player.radius:
         player.y = player.radius
 
-def decrease_spawn_time():
+def decrease_time_between_zombie_spawn():
 
-    if window_running:
-        global time_between_spawns
-        time_between_spawns *= 0.95
-        time = threading.Timer(5, decrease_spawn_time)
-        time.start()
+    if not window_running:
+        return
+    global time_between_spawns
+    time_between_spawns *= 0.95
+    threading.Timer(5, decrease_time_between_zombie_spawn).start()
 
 def spawn_zombie():
 
     if not window_running:
         return
-
     global zombie_array, time_between_spawns
+    difficulty = random.choice([0, 1, 2])
 
-    def get_random_x():
-        return random.randint(0, WINDOW_WIDTH)
+    # difficulty, radius, speed, color, health, damage
+    stats = [
+        ["easy", 25, 1, (255, 100, 100), 50, 10],
+        ["medium", 32, 2, (255, 70, 70), 100, 15],
+        ["hard", 40, 3, (255, 40, 40), 150, 25]
+    ]
 
-    def get_random_y():
-        return random.randint(0, WINDOW_WIDTH)
+    random_x = random.randint(0, WINDOW_WIDTH)
+    random_y = random.randint(0, WINDOW_HEIGHT)
 
-    def get_random_difficulty():
-        difficulty = random.choice(["easy", "medium", "hard"])
-        return difficulty
+    def do_coords_collide_with_others(x, y):
+        other_array = []
+        for zombie in zombie_array:
+            other_array.append(zombie)
+        other_array.append(player)
 
-    difficulty = get_random_difficulty()
+        for zombie in other_array:
+            if distance(x, y, zombie.x, zombie.y) < zombie.radius + stats[difficulty][1] + 20:
+                return True
+        return False
 
-    if difficulty == "easy":
+    while do_coords_collide_with_others(random_x, random_y):
+        random_x = random.randint(0, WINDOW_WIDTH)
+        random_y = random.randint(0, WINDOW_HEIGHT)
 
-        radius = 25
-        speed = 1
-        color = (255, 100, 100)
-        health = 50
-        damage = 10
-        difficulty = "easy"
-
-    if difficulty == "medium":
-
-        radius = 32
-        speed = 2
-        color = (255, 70, 70)
-        health = 100
-        damage = 15
-        difficulty = "medium"
-
-    if difficulty == "hard":
-
-        radius = 40
-        speed = 3
-        color = (255, 40, 40)
-        health = 150
-        damage = 25
-        difficulty = "hard"
-
-    def do_coords_collide(x, y):
-
-        another_other_array = []
-        for i in zombie_array:
-            another_other_array.append(i)
-        another_other_array.append(player)
-
-        for i in another_other_array:
-            if find_distance(x, y, i.x, i.y) < i.radius + radius + 20:
-                return False
-
-    random_x = get_random_x()
-    random_y = get_random_y()
-
-    while do_coords_collide(random_x, random_y) == False:
-        random_x = get_random_x()
-        random_y = get_random_y()
-
-    zombie = Zombie(x=random_x, y=random_y, radius=radius, color=color, speed=speed, health=health, damage=damage, difficulty=difficulty)
+    zombie = Zombie(x=random_x, y=random_y, radius=stats[difficulty][1], 
+                    color=stats[difficulty][3], perma_color=stats[difficulty][3],
+                    speed=stats[difficulty][2], health=stats[difficulty][4], 
+                    damage=stats[difficulty][5], difficulty=stats[difficulty][0])
+    
     zombie_array.append(zombie)
+    threading.Timer(time_between_spawns, spawn_zombie).start()
 
-    time = threading.Timer(time_between_spawns, spawn_zombie)
-    time.start()
-
-def find_distance(x1, y1, x2, y2):
+def distance(x1, y1, x2, y2):
     return math.sqrt((x1 - x2)**2 + (y1 - y2)**2)
 
 def register_player_damage(zombie):
+    if not window_running:
+        return
 
-    if window_running:
+    def change_player_color_back():
+        player.color = (0, 200, 0)
 
-        def change_player_color_back():
-            player.color = (0, 200, 0)
+    if can_take_damage_now:
+        player.health -= zombie.damage
+        damage_sound.play()
+        player.color = (150, 200, 150)
+        threading.Timer(0.1, change_player_color_back).start()
 
-        if can_take_damage_now:
-            player.health -= zombie.damage
-            damage_sound.play()
-            player.color = (150, 200, 150)
-            time = threading.Timer(0.1, change_player_color_back)
-            time.start()
-
-        handle_damage_delay()
+    handle_damage_delay()
 
 def update_follow_point():
-
-    if window_running:
-
-        player.follow_x = player.x
-        player.follow_y = player.y
-
-        time = threading.Timer(0.25, update_follow_point)
-        time.start()
+    if not window_running:
+        return
+    player.x_to_follow = player.x
+    player.y_to_follow = player.y
+    threading.Timer(0.25, update_follow_point).start()
 
 def zombie_movement():
 
-    global zombie_array, other_array
+    if not window_running:
+        return
+    global zombie_array
+    for zombie in zombie_array:
 
-    for i in zombie_array:
-
+        player_damage = False
         other_array = []
-        for j in zombie_array:
-            if j != i:
-                other_array.append(j)
+        for zombie_2 in zombie_array:
+            if zombie_2 != zombie:
+                other_array.append(zombie_2)
         other_array.append(player)
 
-        if i.x > player.follow_x:
-            i.x -= i.speed
+        if zombie.x > player.x_to_follow:
+            zombie.x -= zombie.speed
+        elif zombie.x < player.x_to_follow:
+            zombie.x += zombie.speed
 
-            for j in other_array:
-                if find_distance(i.x, i.y, j.x, j.y) < i.radius + j.radius:
-                    i.x += i.speed
+        if zombie.y > player.y_to_follow:
+            zombie.y -= zombie.speed
+        elif zombie.y < player.y_to_follow:
+            zombie.y += zombie.speed
 
-                    if j == player:
-                        register_player_damage(i)
-
-        if i.x < player.follow_x:
-            i.x += i.speed
-
-            for j in other_array:
-                if find_distance(i.x, i.y, j.x, j.y) < i.radius + j.radius:
-                    i.x -= i.speed
-
-                    if j == player:
-                        register_player_damage(i)
-
-        if i.y < player.follow_y:
-            i.y += i.speed
-
-            for j in other_array:
-                if find_distance(i.x, i.y, j.x, j.y) < i.radius + j.radius:
-                    i.y -= i.speed
-
-                    if j == player:
-                        register_player_damage(i)
-
-        if i.y > player.follow_y:
-            i.y -= i.speed
-
-            for j in other_array:
-                if find_distance(i.x, i.y, j.x, j.y) < i.radius + j.radius:
-                    i.y += i.speed
-
-                    if j == player:
-                        register_player_damage(i)
+        for others in other_array:
+            dist = distance(zombie.x, zombie.y, others.x, others.y)
+            if dist < zombie.radius + others.radius:
+                if others == player:
+                    player_damage = True
+                if zombie.x > others.x:
+                    zombie.x += zombie.speed
+                elif zombie.x < others.x:
+                    zombie.x -= zombie.speed
+                if zombie.y < others.y:
+                    zombie.y -= zombie.speed
+                elif zombie.y > others.y:
+                    zombie.y += zombie.speed
+        
+        if player_damage:
+            register_player_damage(zombie)
 
 def draw_zombies():
-
     global zombie_array
-    for i in zombie_array:
-        draw.circle(screen, i.color, (i.x, i.y), i.radius)
+    for zombie in zombie_array:
+        draw.circle(screen, zombie.color, (zombie.x, zombie.y), zombie.radius)
 
 def handle_damage_delay():
-
     global can_take_damage_now
     if can_take_damage_now and window_running:
 
@@ -288,15 +239,13 @@ def handle_damage_delay():
         def toggle_damage_off():
             global can_take_damage_now
             can_take_damage_now = False
-            time = threading.Timer(1, toggle_damage_on)
-            time.start()
+            threading.Timer(1, toggle_damage_on).start()
 
         toggle_damage_off()
 
 def handle_health():
 
     global game_running
-
     if player.health < 0:
         player.health = 0
 
@@ -304,7 +253,8 @@ def handle_health():
         game_running = False
         game_over_sound.play()
 
-    healthboard = small_font.render("health: "+str(player.health), True, "white")
+    health = str(player.health)
+    healthboard = small_font.render("health: "+health, True, "white")
     screen.blit(healthboard, (30, 30))
 
 def handle_score():
@@ -313,127 +263,106 @@ def handle_score():
     scoreboard = small_font.render("score: "+str(score), True, "white")
     screen.blit(scoreboard, (30, 90))
 
-def fire_gun():
+def turn_zombie_damage_animation_off(zombie):
+    zombie.animating = False
 
-    if holdclick and window_running:
+def fire_bullet_and_handle_damage():
 
-        global zombie_array, bullet_array
-        mouse_x, mouse_y = mouse.get_pos()
+    if not(holding_click and window_running):
+        return
 
-        distance = find_distance(player.x, player.y, mouse_x, mouse_y)
-        unit_x = (mouse_x - player.x) / distance
-        unit_y = (mouse_y - player.y) / distance
+    global zombie_array, bullet_array
+    mouse_x, mouse_y = mouse.get_pos()
+    multiplier = 50000
 
-        bullet = Bullet(player.x, player.y, player.x, player.y, unit_x, unit_y)
-        bullet_array.append(bullet)
-        gun_sound.play()
+    dist = distance(player.x, player.y, mouse_x, mouse_y)
+    unit_x = (mouse_x - player.x) / dist
+    unit_y = (mouse_y - player.y) / dist
 
-        for i in zombie_array:
+    bullet = Bullet(player.x, player.y, unit_x, unit_y)
+    bullet_array.append(bullet)
+    gun_sound.play()
 
-            zombie_rect = Rect(i.x - i.radius, i.y - i.radius, i.radius*2, i.radius*2)
-            if zombie_rect.clipline((player.x, player.y), (unit_x * 50000, unit_y * 50000)):
-                i.health -= 30
+    for zombie in zombie_array:
+        zombie_rect_x = zombie.x - zombie.radius
+        zombie_rect_y = zombie.y - zombie.radius
+        zombie_rect_length = zombie.radius*2
+        zombie_rect = Rect(zombie_rect_x, zombie_rect_y, zombie_rect_length, zombie_rect_length)
+        if zombie_rect.clipline((player.x, player.y), (unit_x * multiplier, unit_y * multiplier)):
+            zombie.health -= 30
+            if not zombie.animating:
+                zombie.animating = True
+                threading.Timer(0.1, turn_zombie_damage_animation_off, [zombie]).start()
 
-                if not i.animating:
+    threading.Timer(0.2, fire_bullet_and_handle_damage).start()
 
-                    i.animating = True
-                    def animate_damage_off(zombie):
-                        zombie.animating = False
-
-                    time = threading.Timer(0.1, animate_damage_off, [i])
-                    time.start()
-
-        time = threading.Timer(0.2, fire_gun)
-        time.start()
-
-def show_game_over():
-
-    if window_running:
-        game_over_message = big_font.render("game over", True, "white")
-        MESSAGE_WIDTH, MESSAGE_HEIGHT = game_over_message.get_size()
-        screen.blit(game_over_message, (WINDOW_WIDTH/2 - MESSAGE_WIDTH/2, WINDOW_HEIGHT/2 - MESSAGE_HEIGHT/2))
+def show_game_over_message():
+    if not window_running:
+        return
+    game_over_message = big_font.render("game over", True, "white")
+    MESSAGE_WIDTH, MESSAGE_HEIGHT = game_over_message.get_size()
+    center_x_coordinate = WINDOW_WIDTH/2 - MESSAGE_WIDTH/2
+    center_y_coordinate = WINDOW_HEIGHT/2 - MESSAGE_HEIGHT/2
+    screen.blit(game_over_message, (center_x_coordinate, center_y_coordinate))
 
 def handle_zombie_death():
 
     global zombie_array, score
     temp_array = []
 
-    for i in zombie_array:
-
-        if i.health <= 0:
-
+    for zombie in zombie_array:
+        if zombie.health <= 0:
             zombie_death_sound.play()
-            if i.difficulty == "easy":
-                score += 1
-            if i.difficulty == "medium":
-                score += 2
-            if i.difficulty == "hard":
-                score += 3
-
-        if i.health > 0:
-            temp_array.append(i)
+            score += zombie.speed
+        if zombie.health > 0:
+            temp_array.append(zombie)
 
     zombie_array = []
-    for i in temp_array:
-        zombie_array.append(i)
+    for zombie in temp_array:
+        zombie_array.append(zombie)
 
 def animate_damage():
-
-    for i in zombie_array:
-
-        if i.animating:
-            i.color = (255, 200, 200)
-
+    for zombie in zombie_array:
+        if zombie.animating:
+            zombie.color = (255, 200, 200)
         else:
-            if i.difficulty == "easy":
-                i.color = (255, 130, 130)
-            elif i.difficulty == "medium":
-                i.color = (255, 100, 100)
-            elif i.difficulty == "hard":
-                i.color = (255, 70, 70)
+            zombie.color = zombie.perma_color
 
 def draw_bullets():
-
     global bullet_array
-    for i in bullet_array:
-        draw.circle(screen, i.color, (i.x, i.y), i.radius)
-        i.x += i.unit_x * 100
-        i.y += i.unit_y * 100
+    for bullet in bullet_array:
+        draw.circle(screen, bullet.color, (bullet.x, bullet.y), bullet.radius)
+        bullet.x += bullet.unit_x * 100
+        bullet.y += bullet.unit_y * 100
 
 def walking_animation():
+    if not game_running:
+        return
+    
+    walking_right = holding_d and not holding_a
+    walking_left = holding_a and not holding_d
+    walking_up = holding_w and not holding_s
+    walking_down = holding_s and not holding_w
 
-    if game_running:
+    if walking_right or walking_left or walking_up or walking_down:
+        if ascent:
+            player.y -= 1
+        if descent:
+            player.y += 1
 
-        walking_right = holdd and not holda
-        walking_left = holda and not holdd
-        walking_up = holdw and not holds
-        walking_down = holds and not holdw
-
-        if walking_right or walking_left or walking_up or walking_down:
-
-            if ascent:
-                player.y -= 1
-            if descent:
-                player.y += 1
-
-def walking_animation_flip():
-
+def flip_walking_animation():
+    if not window_running:
+        return
     global ascent, descent
-    ascent = not ascent
-    descent = not descent
+    ascent, descent = not ascent, not descent
+    threading.Timer(0.1, flip_walking_animation).start()
 
-    if window_running:
-
-        time = threading.Timer(0.1, walking_animation_flip)
-        time.start()
-
-decrease_spawn_time()
+decrease_time_between_zombie_spawn()
 spawn_zombie()
-walking_animation_flip()
+flip_walking_animation()
 update_follow_point()
 
 while window_running:
-
     for e in event.get():
 
         if e.type == QUIT:
@@ -441,58 +370,48 @@ while window_running:
 
         if e.type == KEYDOWN:
             if e.key == K_w:
-                holdw = True
+                holding_w = True
             if e.key == K_s:
-                holds = True
+                holding_s = True
             if e.key == K_d:
-                holdd = True
+                holding_d = True
             if e.key == K_a:
-                holda = True
+                holding_a = True
 
         if e.type == KEYUP:
             if e.key == K_w:
-                holdw = False
+                holding_w = False
             if e.key == K_s:
-                holds = False
+                holding_s = False
             if e.key == K_d:
-                holdd = False
+                holding_d = False
             if e.key == K_a:
-                holda = False
+                holding_a = False
 
         if e.type == MOUSEBUTTONDOWN:
-            holdclick = True
-            if game_running:
-                fire_gun()
+            holding_click = True
+            fire_bullet_and_handle_damage()
+
         if e.type == MOUSEBUTTONUP:
-            holdclick = False
+            holding_click = False
 
     draw_map()
 
     if game_running:
-
-        player_movement_and_boundaries()
-
+        handle_player_movement()
+        prevent_boundary_escape()
         walking_animation()
-
         draw_bullets()
-
         draw_player()
-
         zombie_movement()
-
         draw_zombies()
-
         handle_zombie_death()
-
         animate_damage()
-
         handle_health()
-
         handle_score()
 
     if not game_running:
+        show_game_over_message()
 
-        show_game_over()
-
-    clock.tick(FPS)
+    clock.tick(FRAMES)
     display.update()
