@@ -1,6 +1,5 @@
 from pygame import *
 from pygame import mixer
-import time as t
 import math
 import threading
 import random
@@ -81,6 +80,7 @@ def draw_player():
     draw.circle(screen, player.color, (player.x, player.y), player.radius)
 
 def draw_map():
+
     for x in range(WINDOW_WIDTH+1):
         if x % 512 == 0:
             for y in range(WINDOW_HEIGHT+1):
@@ -135,6 +135,7 @@ def spawn_zombie():
     random_y = random.randint(0, WINDOW_HEIGHT)
 
     def do_coords_collide_with_others(x, y):
+
         other_array = []
         for zombie in zombie_array:
             other_array.append(zombie)
@@ -146,6 +147,7 @@ def spawn_zombie():
         return False
 
     while do_coords_collide_with_others(random_x, random_y):
+
         random_x = random.randint(0, WINDOW_WIDTH)
         random_y = random.randint(0, WINDOW_HEIGHT)
 
@@ -161,6 +163,7 @@ def distance(x1, y1, x2, y2):
     return math.sqrt((x1 - x2)**2 + (y1 - y2)**2)
 
 def register_player_damage(zombie):
+
     if not window_running:
         return
 
@@ -176,6 +179,7 @@ def register_player_damage(zombie):
     handle_damage_delay()
 
 def update_follow_point():
+
     if not window_running:
         return
     player.x_to_follow = player.x
@@ -224,11 +228,13 @@ def zombie_movement():
             register_player_damage(zombie)
 
 def draw_zombies():
+
     global zombie_array
     for zombie in zombie_array:
         draw.circle(screen, zombie.color, (zombie.x, zombie.y), zombie.radius)
 
 def handle_damage_delay():
+
     global can_take_damage_now
     if can_take_damage_now and window_running:
 
@@ -288,6 +294,7 @@ def fire_bullet_and_handle_damage():
         zombie_rect_y = zombie.y - zombie.radius
         zombie_rect_length = zombie.radius*2
         zombie_rect = Rect(zombie_rect_x, zombie_rect_y, zombie_rect_length, zombie_rect_length)
+
         if zombie_rect.clipline((player.x, player.y), (unit_x * multiplier, unit_y * multiplier)):
             zombie.health -= 30
             if not zombie.animating:
@@ -297,8 +304,10 @@ def fire_bullet_and_handle_damage():
     threading.Timer(0.2, fire_bullet_and_handle_damage).start()
 
 def show_game_over_message():
+
     if not window_running:
         return
+    
     game_over_message = big_font.render("game over", True, "white")
     MESSAGE_WIDTH, MESSAGE_HEIGHT = game_over_message.get_size()
     center_x_coordinate = WINDOW_WIDTH/2 - MESSAGE_WIDTH/2
@@ -322,6 +331,7 @@ def handle_zombie_death():
         zombie_array.append(zombie)
 
 def animate_damage():
+
     for zombie in zombie_array:
         if zombie.animating:
             zombie.color = (255, 200, 200)
@@ -329,6 +339,7 @@ def animate_damage():
             zombie.color = zombie.perma_color
 
 def draw_bullets():
+
     global bullet_array
     for bullet in bullet_array:
         draw.circle(screen, bullet.color, (bullet.x, bullet.y), bullet.radius)
@@ -336,6 +347,7 @@ def draw_bullets():
         bullet.y += bullet.unit_y * 100
 
 def walking_animation():
+
     if not game_running:
         return
     
@@ -351,6 +363,7 @@ def walking_animation():
             player.y += 1
 
 def flip_walking_animation():
+
     if not window_running:
         return
     global ascent, descent
